@@ -1,0 +1,32 @@
+# Core framework — 1.35+ required for width='stretch' in st.plotly_chart
+streamlit>=1.35.0,<2.0.0
+
+# Data processing
+pandas>=2.0.0,<3.0.0
+numpy>=1.24.0,<3.0.0
+
+# Visualisation — 5.x for theme=None parameter
+plotly>=5.18.0,<6.0.0
+
+# Async HTTP for concurrent TMDB API fetching
+aiohttp>=3.9.0,<4.0.0
+
+# Error tracking (optional — gracefully disabled if SENTRY_DSN is absent)
+sentry-sdk>=1.40.0,<3.0.0
+
+# Image handling
+Pillow>=10.0.0,<12.0.0
+
+# Improved Streamlit hot-reload on Windows / Fedora
+watchdog>=3.0.0
+
+# Fast DataFrame I/O via Apache Arrow columnar format
+pyarrow>=14.0.0
+
+# ── Performance additions (V9.1) ──────────────────────────────────
+
+# 10x faster JSON parsing for actors/directors metadata columns
+orjson>=3.10.0
+
+# 10-50x faster groupby/sort/filter for heavy DataFrame operations
+polars>=1.0.0

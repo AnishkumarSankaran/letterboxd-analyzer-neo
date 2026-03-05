@@ -1,0 +1,52 @@
+# ──────────────────────────────────────────────
+# LETTERBOXD V9 — .gitignore
+# ──────────────────────────────────────────────
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Local SQLite database — NEVER commit this
+# It contains user data and is too large for GitHub
+movie_cache.db
+movie_cache.db-wal
+movie_cache.db-shm
+*.db
+*.db-wal
+*.db-shm
+
+# Streamlit secrets — NEVER commit this (contains API keys)
+.streamlit/secrets.toml
+
+# Profiling scripts (not needed for deployment)
+profile_cache.py
+profile_full.py
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.spyderproject
+*.spyproject
+Spyder.ini
+
+# Logs and temp files
+*.log
+*.tmp
+sentry.json
+
+# Export files
+*.csv
+*.zip

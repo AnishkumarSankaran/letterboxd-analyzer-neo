@@ -1,0 +1,32 @@
+/**
+ * TOKENS — Design system variables
+ * Import first: all other files depend on these.
+ */
+@import url('https://fonts.googleapis.com/css2?family=Chivo:wght@900&family=Space+Grotesk:wght@400;700;900&family=Syne:wght@800&display=swap');
+
+:root {
+    --ink:       #000000;
+    --paper:     #FFFFFF;
+    --paper-dk:  #F0F0F0;
+    --cyan:      #00E5FF;
+    --magenta:   #FF00A0;
+    --yellow:    #FFDE00;
+    --red:       #FF003C;
+    --blue:      #0088FF;
+    --green:     #00D34D;
+    --orange:    #FF6600;
+    --purple:    #9D00FF;
+    --b1: 3px solid #000;
+    --b2: 5px solid #000;
+    --b3: 8px solid #000;
+    --sh-sm:  4px  4px 0 #000;
+    --sh-md:  8px  8px 0 #000;
+    --sh-lg: 12px 12px 0 #000;
+    --sh-xl: 16px 16px 0 #000;
+    --f-a: 'Chivo','Impact',sans-serif;
+    --f-m: 'Syne','Impact',sans-serif;
+    --f-s: 'Space Grotesk','Arial',sans-serif;
+    --dots-sm:    url("data:image/svg+xml,%3Csvg width='8' height='8' viewBox='0 0 8 8' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='4' cy='4' r='1.2' fill='%23000' fill-opacity='.13'/%3E%3C/svg%3E");
+    --dots-md:    url("data:image/svg+xml,%3Csvg width='14' height='14' viewBox='0 0 14 14' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='7' cy='7' r='2.5' fill='%23000' fill-opacity='.1'/%3E%3C/svg%3E");
+    --dots-wht:   url("data:image/svg+xml,%3Csvg width='10' height='10' viewBox='0 0 10 10' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='5' cy='5' r='1.8' fill='%23fff' fill-opacity='.22'/%3E%3C/svg%3E");
+}
