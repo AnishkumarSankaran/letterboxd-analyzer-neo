@@ -182,7 +182,7 @@ See [LICENSE](LICENSE) for full terms.
 
 - 📽️ Letterboxd: [@antonymic](https://letterboxd.com/antonymic/)
 - 💻 GitHub: [@AnishkumarSankaran](https://github.com/AnishkumarSankaran)
-- 📧 [Contact via GitHub Issues](https://github.com/AnishkumarSankaran/letterboxd-neo-brutalist/issues)
+- 📧 [Contact via Email for Issues](letterboxdanalyzerneo@gmail.com)
 
 *Built with love and a potato PC (AMD A4 dual-core ThinkPad). If this runs on my machine, it runs on yours.*
 
