@@ -442,6 +442,28 @@ def get_first_and_last_film(
 
 
 # ─────────────────────────────────────────────────────────────────
+# DECADE ANALYSIS
+# ─────────────────────────────────────────────────────────────────
+@st.cache_data(show_spinner=False)
+def analyze_films_by_decade(df: pd.DataFrame) -> pd.DataFrame:
+    """Group films by release decade for bar chart."""
+    if df.empty:
+        return pd.DataFrame()
+    df_c = df.copy()
+    if "Year" in df_c.columns:
+        years = pd.to_numeric(df_c["Year"], errors="coerce").dropna()
+    elif "release_date" in df_c.columns:
+        years = pd.to_numeric(df_c["release_date"].astype(str).str[:4], errors="coerce").dropna()
+    else:
+        return pd.DataFrame()
+    if years.empty:
+        return pd.DataFrame()
+    decades = (years // 10 * 10).astype(int)
+    counts = decades.value_counts().sort_index()
+    return pd.DataFrame({"Decade": [f"{d}s" for d in counts.index], "Count": counts.values})
+
+
+# ─────────────────────────────────────────────────────────────────
 # HIGHLY RATED UNSEEN
 # ─────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=False)

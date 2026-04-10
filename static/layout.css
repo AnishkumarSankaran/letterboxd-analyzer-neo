@@ -21,6 +21,7 @@
     box-shadow: 0 0 0 4px var(--paper), 0 0 0 8px var(--ink) !important;
     padding: 3rem 3.5rem !important;
     max-width: 1400px !important;
+    font-size: 1.02rem !important;
 }
 
 /* === SIDEBAR ============================================================== */
@@ -72,6 +73,64 @@
     border: var(--b2) !important;
     box-shadow: var(--sh-sm) !important;
     padding: 12px !important;
+}
+
+/* === SIDEBAR TOGGLE BUTTON — YELLOW REST, GREEN HOVER ==================== */
+[data-testid="collapsedControl"] button,
+[data-testid="stSidebarCollapsedControl"] button,
+button[kind="header"],
+.stButton>button[data-testid="stBaseButton-headerNoPadding"],
+[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"],
+[data-testid="stSidebarContent"] > div:first-child button {
+    background: var(--yellow) !important;
+    color: var(--ink) !important;
+    border: var(--b2) !important;
+    box-shadow: var(--sh-sm) !important;
+}
+
+[data-testid="collapsedControl"] button:hover,
+[data-testid="stSidebarCollapsedControl"] button:hover,
+button[kind="header"]:hover,
+[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"]:hover,
+[data-testid="stSidebarContent"] > div:first-child button:hover {
+    background: var(--green) !important;
+    color: var(--ink) !important;
+    transform: translate(-3px, -3px) !important;
+    box-shadow: var(--sh-md) !important;
+}
+
+/* === STREAMLIT HEADER — MATCH APP THEME =================================== */
+header[data-testid="stHeader"] {
+    background-color: var(--ink) !important;
+    border-bottom: var(--b2) !important;
+}
+
+[data-testid="stToolbar"] {
+    background: var(--ink) !important;
+}
+
+header[data-testid="stHeader"] button {
+    background: var(--yellow) !important;
+    color: var(--ink) !important;
+    border: var(--b2) !important;
+    font-family: var(--f-a) !important;
+    font-weight: 900 !important;
+}
+
+header[data-testid="stHeader"] button:hover {
+    background: var(--green) !important;
+}
+
+/* === PLOTLY RANGESLIDER — FORCE HIDDEN ==================================== */
+/* Removes the sub-chart range slider from ALL Plotly charts globally */
+.rangeslider-container,
+.rangeselector,
+g.rangeslider-container,
+g.rangeselector {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
 }
 
 /* === TABS ================================================================= */
@@ -178,6 +237,7 @@ button[data-testid="stBaseButton-secondary"]:hover {
 .stPlotlyChart {
     border: var(--b2) !important;
     box-shadow: var(--sh-sm) !important;
+    overflow: hidden !important;
 }
 
 /* === SELECTBOX / INPUTS =================================================== */
@@ -230,6 +290,7 @@ button[data-testid="stBaseButton-secondary"]:hover {
 
 /* === ACCESSIBILITY ======================================================== */
 @media (prefers-reduced-motion: reduce) {
+
     *,
     *::before,
     *::after {

@@ -276,7 +276,7 @@
     font-weight: 900;
     font-size: .9rem;
     text-transform: uppercase;
-    line-height: 1.2;
+    line-height: 1.4;
     color: var(--ink);
     margin-bottom: 5px;
 }
@@ -481,7 +481,7 @@
 
 .nb-lname {
     font-family: var(--f-s);
-    font-weight: 900;
+    font-weight: 700;
     font-size: 1rem;
     flex-grow: 1;
     color: var(--ink);
@@ -805,7 +805,6 @@
     align-items: center;
     background: var(--ink);
     border: var(--b3);
-    box-shadow: var(--sh-md);
     padding: 16px 28px;
     margin-top: 45px;
 }

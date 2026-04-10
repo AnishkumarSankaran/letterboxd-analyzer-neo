@@ -18,6 +18,19 @@
 ║  ✅ Map tab footer: "VIBECODED WITH CLAUDE"                          ║
 ║  ✅ Straight badges: transform:none, never rotated                   ║
 ║                                                                      ║
+║  V9.3 FIXES (Opus):                                                  ║
+║  ✅ Year dropdown reads diary.csv "Watched Date" (actual watch date) ║
+║  ✅ _apply_year_filter uses diary cross-reference strategy           ║
+║  ✅ All tabs pass diary_df to _apply_year_filter                     ║
+║                                                                      ║
+║  V9.4 FIXES:                                                         ║
+║  ✅ Artists: Highest Rated sections now year-filtered                ║
+║  ✅ Milestones: FIRST & LAST uses selected year, not current year    ║
+║  ✅ Milestones: FIRST & LAST uses diary Watched Date for ordering    ║
+║  ✅ Milestones: Diary Milestones (50th,100th…) year-filtered         ║
+║  ✅ Milestones: Most Re-watched uses year-filtered diary             ║
+║  ✅ Milestones: Poster lookup uses full enriched cache, not slice    ║
+║                                                                      ║
 ║  Performance: handles 10,000+ films fast.                           ║
 ╚══════════════════════════════════════════════════════════════════════╝
 """
@@ -47,6 +60,7 @@ from database import get_database, _make_cache_key
 from tmdb_async import fetch_movies_with_progress
 from data_processing import (
     analyze_countries,
+    analyze_films_by_decade,
     analyze_genres,
     analyze_languages,
     analyze_movies_per_day,
@@ -113,7 +127,7 @@ def _capture(ex: Exception) -> None:
 # PAGE CONFIG
 # ─────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Letterboxd Analyzer — V9 NEO-BRUTAL",
+    page_title="Letterboxd Analyzer — V9.2 NEO-BRUTAL",
     page_icon="🎬",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -238,19 +252,8 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        '<div style="font-family:Space Grotesk,sans-serif;font-weight:700;'
-        'font-size:0.75rem;color:#000;background:#FFDE00;border:3px solid #000;'
-        'padding:8px 12px;box-shadow:4px 4px 0 #000;margin-top:15px;'
-        'text-transform:uppercase;letter-spacing:.06em;line-height:2;">'
-        'V9 NEO-BRUTAL EDITION<br>'
-        'CMYK + HARD SHADOWS<br>'
-        'ZERO RADIUS / ROTATE<br>'
-        'RECTANGULAR ARTISTS<br>'
-        'REMAKE-SAFE REWATCHES'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    # Year filter is rendered in main content area by display_analysis()
+
 
 # ─────────────────────────────────────────────────────────────────
 # TMDB KEY
@@ -468,7 +471,11 @@ def enrich_with_progress(df: pd.DataFrame, label: str = "films",
                     year  = df.at[orig_idx, "parsed_year"]
                     if title:
                         ck = _make_cache_key(title, year)
-                        raw = abs(hash(ck)) % 2_000_000_000
+                        # ✅ V9.2 FIX: Use deterministic MD5 instead of hash()
+                        # which changes every process restart (PYTHONHASHSEED).
+                        import hashlib as _hashlib
+                        _digest = int(_hashlib.md5(ck.encode(), usedforsecurity=False).hexdigest(), 16)
+                        raw = _digest % 2_000_000_000
                         neg_id = -(raw if raw != 0 else 1)
                         write_records.append({"_orig_idx": orig_idx, "tmdb_id": neg_id})
                         to_cache.append({
@@ -541,6 +548,64 @@ def _get_enriched(df: pd.DataFrame, key: str, label: str) -> pd.DataFrame:
     return _store_enrichment(df, key)
 
 
+def _apply_year_filter(df: pd.DataFrame, selected_year: str,
+                       date_col: str = "Date",
+                       diary_df: pd.DataFrame = None) -> pd.DataFrame:
+    """Apply year filter to an enriched DataFrame.
+
+    ✅ V9.3 FIX: Uses diary.csv "Watched Date" to cross-reference which
+    films were actually watched in the selected year.  This is critical
+    because watched.csv "Date" is the LOGGING date (when the film was
+    added to Letterboxd), NOT the actual watch date.  Users who bulk-
+    imported their history will have all watched.csv Dates in one year.
+
+    Strategy:
+      1) If diary_df is available → find (Name, Year) pairs whose
+         "Watched Date" falls in selected_year → filter df to those.
+      2) Fallback → filter df[date_col] directly (legacy behaviour).
+    """
+    if selected_year == "ALL TIME" or df.empty:
+        return df
+    try:
+        sel_yr = int(selected_year)
+    except (ValueError, TypeError):
+        return df
+
+    # ── Strategy 1: diary cross-reference (preferred) ──────────────
+    if (diary_df is not None and not diary_df.empty
+            and "Watched Date" in diary_df.columns
+            and "Name" in diary_df.columns and "Name" in df.columns):
+        _wd = pd.to_datetime(diary_df["Watched Date"], errors="coerce")
+        diary_in_year = diary_df[_wd.dt.year == sel_yr]
+        if not diary_in_year.empty:
+            # Build a set of (name, year) keys from diary entries in the
+            # selected year so we can match against the enriched df.
+            if "Year" in diary_in_year.columns and "Year" in df.columns:
+                _dk = set(zip(
+                    diary_in_year["Name"].astype(str).str.strip(),
+                    pd.to_numeric(diary_in_year["Year"], errors="coerce"),
+                ))
+                _fk = list(zip(
+                    df["Name"].astype(str).str.strip(),
+                    pd.to_numeric(df["Year"], errors="coerce") if "Year" in df.columns else [None] * len(df),
+                ))
+                mask = [k in _dk for k in _fk]
+            else:
+                _dnames = set(diary_in_year["Name"].astype(str).str.strip())
+                mask = df["Name"].astype(str).str.strip().isin(_dnames)
+            result = df[mask].copy()
+            if not result.empty:
+                return result
+        # If diary had no entries for this year, fall through to
+        # Strategy 2 so Date-only entries (no diary row) still match.
+
+    # ── Strategy 2: direct date_col filter (fallback) ─────────────
+    if date_col not in df.columns:
+        return df
+    dates = pd.to_datetime(df[date_col], errors="coerce")
+    return df[dates.dt.year == sel_yr].copy()
+
+
 # ─────────────────────────────────────────────────────────────────
 # WELCOME SCREEN
 # ─────────────────────────────────────────────────────────────────
@@ -565,6 +630,7 @@ def _show_welcome() -> None:
         '</div>',
         unsafe_allow_html=True,
     )
+    display_global_footer()
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -621,12 +687,10 @@ def main() -> None:
                 wf  = st.file_uploader("watched.csv",   type=["csv"], key="w")
                 rf  = st.file_uploader("ratings.csv",   type=["csv"], key="r")
                 wlf = st.file_uploader("watchlist.csv", type=["csv"], key="wl")
-                df  = st.file_uploader("diary.csv (for rewatches)", type=["csv"], key="d")
 
                 if wf:  dataframes["watched"]   = pd.read_csv(wf)
                 if rf:  dataframes["ratings"]   = pd.read_csv(rf)
                 if wlf: dataframes["watchlist"] = pd.read_csv(wlf)
-                if df:  dataframes["diary"]     = pd.read_csv(df)
 
                 if dataframes: st.success(f"✅ {len(dataframes)} file(s) loaded")
                 
@@ -729,6 +793,60 @@ def display_analysis(dataframes: Dict[str, pd.DataFrame]) -> None:
         print(f"[TIME] display_analysis enrichment: {time.time()-t_enrich:.2f}s")
 
     t_tabs = time.time()
+
+    # ── Year-wise filter (populated now that data is loaded) ──────
+    # ✅ V9.3 FIX: PRIMARY source is diary.csv "Watched Date" which
+    # contains the ACTUAL date the user watched each film.  watched.csv
+    # "Date" is the LOGGING date (when the entry was added to Letterboxd)
+    # and is almost always a single bulk-import date for users who
+    # imported their full history at once.
+    _years_available = set()
+
+    # PRIMARY: diary.csv "Watched Date" — actual watch dates
+    _diary_raw = dataframes.get("diary", pd.DataFrame())
+    if not _diary_raw.empty and "Watched Date" in _diary_raw.columns:
+        _dd = pd.to_datetime(_diary_raw["Watched Date"], errors="coerce")
+        _years_available.update(int(y) for y in _dd.dropna().dt.year.unique())
+
+    # SECONDARY: watched.csv "Date" — catches films not in diary
+    _watched_raw = dataframes.get("watched", pd.DataFrame())
+    if not _watched_raw.empty and "Date" in _watched_raw.columns:
+        _wd = pd.to_datetime(_watched_raw["Date"], errors="coerce")
+        _years_available.update(int(y) for y in _wd.dropna().dt.year.unique())
+
+    # SECONDARY: ratings.csv "Date"
+    _ratings_raw = dataframes.get("ratings", pd.DataFrame())
+    if not _ratings_raw.empty and "Date" in _ratings_raw.columns:
+        _rd = pd.to_datetime(_ratings_raw["Date"], errors="coerce")
+        _years_available.update(int(y) for y in _rd.dropna().dt.year.unique())
+
+    if not _years_available:
+        import datetime
+        _years_available = {datetime.datetime.now().year}
+
+    _year_options = ["ALL TIME"] + [str(y) for y in sorted(_years_available, reverse=True)]
+
+    _fc1, _fc2 = st.columns([3, 1])
+    with _fc2:
+        st.markdown(
+            '<div style="font-family:Chivo,sans-serif;font-size:0.9rem;'
+            'font-weight:900;color:#000;background:#FFDE00;border:5px solid #000;'
+            'padding:4px 10px;box-shadow:5px 5px 0 #000;text-transform:uppercase;'
+            'margin-bottom:4px;">📅 FILTER BY YEAR</div>',
+            unsafe_allow_html=True,
+        )
+        selected_year = st.selectbox(
+            "Filter by year:",
+            _year_options,
+            key="year_filter_global",
+            label_visibility="collapsed",
+        )
+
+    # ✅ V9.1 FIX: Do NOT pre-filter dataframes here.
+    # Each tab retrieves from st.session_state which stores the FULL
+    # enriched data. The year filter is applied INSIDE each tab function
+    # via _apply_year_filter() AFTER session_state retrieval.
+
     tabs = st.tabs([
         "🎬 WATCHED",
         "📋 WATCHLIST",
@@ -740,9 +858,9 @@ def display_analysis(dataframes: Dict[str, pd.DataFrame]) -> None:
         "🗺️ MAP",
         "🎰 ROULETTE",
     ])
-    with tabs[0]: 
+    with tabs[0]:
         t_w = time.time()
-        _tab_watched(dataframes)
+        _tab_watched(dataframes, selected_year)
         print(f"[TIME] _tab_watched: {time.time()-t_w:.2f}s")
     with tabs[1]:
         t_w = time.time()
@@ -750,27 +868,27 @@ def display_analysis(dataframes: Dict[str, pd.DataFrame]) -> None:
         print(f"[TIME] _tab_watchlist: {time.time()-t_w:.2f}s")
     with tabs[2]:
         t_w = time.time()
-        _tab_ratings(dataframes)
+        _tab_ratings(dataframes, selected_year)
         print(f"[TIME] _tab_ratings: {time.time()-t_w:.2f}s")
     with tabs[3]:
         t_w = time.time()
-        _tab_recent(dataframes)
+        _tab_recent(dataframes, selected_year)
         print(f"[TIME] _tab_recent: {time.time()-t_w:.2f}s")
     with tabs[4]:
         t_w = time.time()
-        _tab_artists(dataframes)
+        _tab_artists(dataframes, selected_year)
         print(f"[TIME] _tab_artists: {time.time()-t_w:.2f}s")
     with tabs[5]:
         t_w = time.time()
-        _tab_milestones(dataframes)
+        _tab_milestones(dataframes, selected_year)
         print(f"[TIME] _tab_milestones: {time.time()-t_w:.2f}s")
     with tabs[6]:
         t_w = time.time()
-        _tab_stats(dataframes)
+        _tab_stats(dataframes, selected_year)
         print(f"[TIME] _tab_stats: {time.time()-t_w:.2f}s")
     with tabs[7]:
         t_w = time.time()
-        _tab_map(dataframes)
+        _tab_map(dataframes, selected_year)
         print(f"[TIME] _tab_map: {time.time()-t_w:.2f}s")
     with tabs[8]:
         t_w = time.time()
@@ -782,7 +900,7 @@ def display_analysis(dataframes: Dict[str, pd.DataFrame]) -> None:
 # ─────────────────────────────────────────────────────────────────
 # TAB: 🎬 WATCHED
 # ─────────────────────────────────────────────────────────────────
-def _tab_watched(dataframes: Dict[str, pd.DataFrame]) -> None:
+def _tab_watched(dataframes: Dict[str, pd.DataFrame], selected_year: str = "ALL TIME") -> None:
     try:
         watched_df = dataframes.get("watched", pd.DataFrame())
         ratings_df = dataframes.get("ratings", pd.DataFrame())
@@ -797,27 +915,55 @@ def _tab_watched(dataframes: Dict[str, pd.DataFrame]) -> None:
         reset_metric_counter()
 
         watched_df = _get_enriched(watched_df, "watched_enriched", "watched films")
+        watched_df = _apply_year_filter(watched_df, selected_year, "Date", diary_df=dataframes.get("diary", pd.DataFrame()))
         # _safe_num already applied by display_analysis at line 674
 
         hours = calculate_total_hours(watched_df)
         days  = hours / 24
 
+        # ✅ V9.1: Rotating metric jokes
+        _watched_jokes = [
+            "Go touch grass.", "Your screen time is legendary.",
+            "Even Scorsese is impressed. Maybe.",
+            "Therapists hate this one weird trick.",
+            "Professional couch warmer.",
+        ]
+        _hour_jokes = [
+            "Could've learned 3 languages.", "That's a full work year.",
+            "Netflix would charge extra for this.",
+            "Your eyes called. They want a vacation.",
+            "This is a lifestyle at this point.",
+        ]
+        _day_jokes = [
+            "A full cinematic existence.", "That's a LOT of popcorn.",
+            "Enough to orbit the Sun in film time.",
+            "You've lived whole lifetimes on screen.",
+        ]
+
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            display_metric_card(f"{len(watched_df):,}", "TOTAL FILMS", "Go touch grass.")
+            display_metric_card(f"{len(watched_df):,}", "TOTAL FILMS", _rnd.choice(_watched_jokes))
         with col2:
-            display_metric_card(f"{hours:,.0f}", "HOURS WATCHED", "Could've learned 3 languages.")
+            display_metric_card(f"{hours:,.0f}", "HOURS WATCHED", _rnd.choice(_hour_jokes))
         with col3:
-            display_metric_card(f"{days:,.1f}", "DAYS OF FILM", "A full cinematic existence.")
+            display_metric_card(f"{days:,.1f}", "DAYS OF FILM", _rnd.choice(_day_jokes))
         with col4:
             # ✅ V9 FIX: avg rating from ratings.csv, not watched.csv (which has no Rating col)
             avg_r = None
-            if not ratings_df.empty and "Rating" in ratings_df.columns:
-                avg_r = pd.to_numeric(ratings_df["Rating"], errors="coerce").dropna().mean()
+            # ✅ V9.2 FIX: Apply year filter to ratings_df so AVG RATING
+            # reflects the selected year, not all-time.
+            _ratings_filtered = _apply_year_filter(ratings_df, selected_year, "Date", diary_df=dataframes.get("diary", pd.DataFrame()))
+            if not _ratings_filtered.empty and "Rating" in _ratings_filtered.columns:
+                avg_r = pd.to_numeric(_ratings_filtered["Rating"], errors="coerce").dropna().mean()
             elif "Rating" in watched_df.columns:
                 avg_r = pd.to_numeric(watched_df["Rating"], errors="coerce").dropna().mean()
             if avg_r is not None and not pd.isna(avg_r):
-                display_metric_card(f"{avg_r:.2f}★", "AVG RATING", "Generous much?")
+                _avg_jokes = [
+                    "Generous much?", "The critics disagree.",
+                    "Consistent, if nothing else.",
+                    "Your standards are showing.",
+                ]
+                display_metric_card(f"{avg_r:.2f}★", "AVG RATING", _rnd.choice(_avg_jokes))
             else:
                 display_metric_card("—", "AVG RATING", "Upload ratings.csv for this.")
 
@@ -837,6 +983,10 @@ def _tab_watched(dataframes: Dict[str, pd.DataFrame]) -> None:
         _divider()
         _section_header("WEEKLY PATTERN")
         plot_bar_chart(analyze_movies_per_day(watched_df), "Day", "Count", "")
+
+        _divider()
+        _section_header("DECADE PATTERN")
+        plot_bar_chart(analyze_films_by_decade(watched_df), "Decade", "Count", "")
 
         _divider()
         col_act, col_dir = st.columns(2)
@@ -874,11 +1024,23 @@ def _tab_watchlist(dataframes: Dict[str, pd.DataFrame]) -> None:
         hours_wl = calculate_total_hours(watchlist_df)
         col1, col2, col3 = st.columns(3)
         with col1:
-            display_metric_card(f"{len(watchlist_df):,}", "FILMS TO WATCH", "You will never finish this.")
+            _wl_jokes = [
+                "You will never finish this.", "Hope springs eternal.",
+                "A monument to ambition.", "Dream big, watch small.",
+            ]
+            display_metric_card(f"{len(watchlist_df):,}", "FILMS TO WATCH", _rnd.choice(_wl_jokes))
         with col2:
-            display_metric_card(f"{hours_wl:,.0f}", "HOURS QUEUED", "That's your future, right there.")
+            _wlh_jokes = [
+                "That's your future, right there.", "Retirement plan sorted.",
+                "Your grandkids will inherit this list.",
+            ]
+            display_metric_card(f"{hours_wl:,.0f}", "HOURS QUEUED", _rnd.choice(_wlh_jokes))
         with col3:
-            display_metric_card(f"{hours_wl/24:,.1f}", "DAYS QUEUED", "No pressure.")
+            _wld_jokes = [
+                "No pressure.", "Calendar blocked through 2030.",
+                "Vacation goals.",
+            ]
+            display_metric_card(f"{hours_wl/24:,.1f}", "DAYS QUEUED", _rnd.choice(_wld_jokes))
 
         _divider()
         _section_header("CRITICALLY ACCLAIMED (ON YOUR LIST)")
@@ -920,7 +1082,7 @@ def _tab_watchlist(dataframes: Dict[str, pd.DataFrame]) -> None:
 # ─────────────────────────────────────────────────────────────────
 # TAB: ⭐ RATINGS
 # ─────────────────────────────────────────────────────────────────
-def _tab_ratings(dataframes: Dict[str, pd.DataFrame]) -> None:
+def _tab_ratings(dataframes: Dict[str, pd.DataFrame], selected_year: str = "ALL TIME") -> None:
     try:
         ratings_df = dataframes.get("ratings", pd.DataFrame())
         if ratings_df.empty:
@@ -933,23 +1095,39 @@ def _tab_ratings(dataframes: Dict[str, pd.DataFrame]) -> None:
         reset_metric_counter()
 
         ratings_df = _get_enriched(ratings_df, "ratings_enriched", "rated films")
+        ratings_df = _apply_year_filter(ratings_df, selected_year, "Date", diary_df=dataframes.get("diary", pd.DataFrame()))
         # _safe_num already applied by display_analysis
         if "Rating" in ratings_df.columns:
             ratings_df["Rating"] = pd.to_numeric(ratings_df["Rating"], errors="coerce")
 
         col1, col2, col3 = st.columns(3)
         with col1:
-            display_metric_card(f"{len(ratings_df):,}", "RATED FILMS", "You have opinions. Good.")
+            _rated_jokes = [
+                "You have opinions. Good.", "Every film, judged.",
+                "You rate like you're getting paid.",
+                "Professional opinion-haver.",
+            ]
+            display_metric_card(f"{len(ratings_df):,}", "RATED FILMS", _rnd.choice(_rated_jokes))
         with col2:
             if "Rating" in ratings_df.columns:
                 avg = ratings_df["Rating"].mean()
-                display_metric_card(f"{avg:.2f}★", "AVERAGE RATING", "Your personal Rotten Tomatoes.")
+                _avg_jokes2 = [
+                    "Your personal Rotten Tomatoes.",
+                    "The algorithm sees all.",
+                    "Neither generous nor stingy.",
+                ]
+                display_metric_card(f"{avg:.2f}★", "AVERAGE RATING", _rnd.choice(_avg_jokes2))
             else:
                 display_metric_card("—", "AVERAGE RATING")
         with col3:
             if "Rating" in ratings_df.columns:
                 fives = int((ratings_df["Rating"] == 5).sum())
-                display_metric_card(f"{fives:,}", "5-STAR FILMS", "Absolute masterpieces.")
+                _five_jokes = [
+                    "Absolute masterpieces.", "No notes. Chef's kiss.",
+                    "Your taste is immaculate. Or is it?",
+                    "You don't give these out lightly. We respect that.",
+                ]
+                display_metric_card(f"{fives:,}", "5-STAR FILMS", _rnd.choice(_five_jokes))
             else:
                 display_metric_card("—", "5-STAR FILMS")
 
@@ -972,7 +1150,7 @@ def _tab_ratings(dataframes: Dict[str, pd.DataFrame]) -> None:
                 ratings_sorted = ratings_df
 
             top_rated    = ratings_sorted[ratings_sorted["Rating"] == 5].head(CONFIG["RATED_DISPLAY_N"])
-            bottom_rated = ratings_sorted[ratings_sorted["Rating"] <= 1].head(CONFIG["RATED_DISPLAY_N"])
+            bottom_rated = ratings_sorted[ratings_sorted["Rating"] == 0.5].head(CONFIG["RATED_DISPLAY_N"])
 
             # ✅ FIX: Full-width grids (no st.columns(2) — prevents poster overlap)
             if not top_rated.empty:
@@ -991,7 +1169,7 @@ def _tab_ratings(dataframes: Dict[str, pd.DataFrame]) -> None:
 # ─────────────────────────────────────────────────────────────────
 # TAB: 🕐 RECENT
 # ─────────────────────────────────────────────────────────────────
-def _tab_recent(dataframes: Dict[str, pd.DataFrame]) -> None:
+def _tab_recent(dataframes: Dict[str, pd.DataFrame], selected_year: str = "ALL TIME") -> None:
     try:
         watched_df = dataframes.get("watched", pd.DataFrame())
         if watched_df.empty:
@@ -1002,6 +1180,7 @@ def _tab_recent(dataframes: Dict[str, pd.DataFrame]) -> None:
             unsafe_allow_html=True,
         )
         watched_df = st.session_state.get("watched_enriched", watched_df)
+        watched_df = _apply_year_filter(watched_df, selected_year, "Date", diary_df=dataframes.get("diary", pd.DataFrame()))
         recent = get_recently_watched(watched_df, "Date", n=CONFIG["RECENT_FILMS_N"])
         if not recent.empty:
             display_recently_watched(recent)
@@ -1021,7 +1200,7 @@ def _tab_recent(dataframes: Dict[str, pd.DataFrame]) -> None:
 # ─────────────────────────────────────────────────────────────────
 # TAB: 🎭 ARTISTS
 # ─────────────────────────────────────────────────────────────────
-def _tab_artists(dataframes: Dict[str, pd.DataFrame]) -> None:
+def _tab_artists(dataframes: Dict[str, pd.DataFrame], selected_year: str = "ALL TIME") -> None:
     try:
         watched_df = dataframes.get("watched", pd.DataFrame())
         if watched_df.empty:
@@ -1032,6 +1211,7 @@ def _tab_artists(dataframes: Dict[str, pd.DataFrame]) -> None:
             unsafe_allow_html=True,
         )
         watched_df = st.session_state.get("watched_enriched", watched_df)
+        watched_df = _apply_year_filter(watched_df, selected_year, "Date", diary_df=dataframes.get("diary", pd.DataFrame()))
 
         # ✅ V9.2: Renamed to "Most Watched", limited to 12
         top_dirs = get_top_people_with_images(watched_df, "directors_with_images", CONFIG["TOP_DIRECTORS_N"])
@@ -1051,6 +1231,14 @@ def _tab_artists(dataframes: Dict[str, pd.DataFrame]) -> None:
         ratings_df = dataframes.get("ratings", pd.DataFrame())
         if not ratings_df.empty:
             ratings_df = st.session_state.get("ratings_enriched", ratings_df)
+        # ✅ V9.4 FIX: Apply year filter so Highest Rated Directors/Actors
+        # sections reflect only the selected year, not all-time data.
+        # Previously ratings_df was unfiltered here even when a year was
+        # selected, causing all-time results to show regardless of the filter.
+        ratings_df = _apply_year_filter(
+            ratings_df, selected_year, "Date",
+            diary_df=dataframes.get("diary", pd.DataFrame()),
+        )
         dir_data: Dict[str, dict] = {}
         act_data: Dict[str, dict] = {}
         rated_src = ratings_df if not ratings_df.empty and "Rating" in ratings_df.columns else watched_df
@@ -1130,7 +1318,7 @@ def _tab_artists(dataframes: Dict[str, pd.DataFrame]) -> None:
 # ─────────────────────────────────────────────────────────────────
 # TAB: 🏆 MILESTONES
 # ─────────────────────────────────────────────────────────────────
-def _tab_milestones(dataframes: Dict[str, pd.DataFrame]) -> None:
+def _tab_milestones(dataframes: Dict[str, pd.DataFrame], selected_year: str = "ALL TIME") -> None:
     try:
         watched_df = dataframes.get("watched", pd.DataFrame())
         if watched_df.empty:
@@ -1142,10 +1330,24 @@ def _tab_milestones(dataframes: Dict[str, pd.DataFrame]) -> None:
         )
         from datetime import datetime
         watched_df = st.session_state.get("watched_enriched", watched_df)
-        yr = datetime.now().year
+        watched_df = _apply_year_filter(watched_df, selected_year, "Date", diary_df=dataframes.get("diary", pd.DataFrame()))
+
+        # ✅ V9.4 FIX: yr reflects the selected year rather than always being
+        # the current calendar year.  When ALL TIME is selected, fall back to
+        # the current year so the section still shows something meaningful.
+        yr = int(selected_year) if selected_year != "ALL TIME" else datetime.now().year
 
         _section_header(f"FIRST & LAST OF {yr}")
-        fl = get_first_and_last_film(watched_df, "Date", yr)
+        # ✅ V9.4 FIX: Use diary.csv "Watched Date" (the actual watch date) to
+        # determine the first and last film of the year.  watched.csv "Date" is
+        # the Letterboxd logging date, which for bulk-imported libraries is a
+        # single date and cannot be used for temporal ordering within a year.
+        _diary_raw_fl = dataframes.get("diary", pd.DataFrame())
+        if not _diary_raw_fl.empty and "Watched Date" in _diary_raw_fl.columns:
+            fl = get_first_and_last_film(_diary_raw_fl, "Watched Date", yr)
+        else:
+            fl = get_first_and_last_film(watched_df, "Date", yr)
+
         if fl.get("first") is not None:
             col1, col2 = st.columns(2)
             with col1:
@@ -1172,8 +1374,46 @@ def _tab_milestones(dataframes: Dict[str, pd.DataFrame]) -> None:
 
         _divider()
         _section_header("DIARY MILESTONES")
-        milestones = get_milestones(watched_df, "Date")
+        # ✅ V9.4 FIX: Filter diary to the selected year before computing
+        # milestones so that the 50th, 100th, etc. entries reflect that year's
+        # viewing order rather than the all-time cumulative order.
+        # When ALL TIME is selected, diary_df_ms is the full diary (no filter).
+        diary_df = dataframes.get("diary", pd.DataFrame())
+        if (selected_year != "ALL TIME"
+                and not diary_df.empty
+                and "Watched Date" in diary_df.columns):
+            _ms_dates = pd.to_datetime(diary_df["Watched Date"], errors="coerce")
+            diary_df_ms = diary_df[_ms_dates.dt.year == int(selected_year)].copy()
+        else:
+            diary_df_ms = diary_df
+
+        if not diary_df_ms.empty and "Watched Date" in diary_df_ms.columns:
+            milestones = get_milestones(diary_df_ms, "Watched Date")
+        else:
+            # Fallback to watched.csv if diary is unavailable
+            milestones = get_milestones(watched_df, "Date")
+
         for mname, mrow in milestones.items():
+            # ✅ V9.1 FIX: Inject poster_path from enriched watched data into
+            # milestone rows. diary.csv has no TMDB columns, so milestones
+            # from diary lack poster_path. We look it up by (Name, Year).
+            if hasattr(mrow, 'get') and not mrow.get('poster_path'):
+                _m_name = mrow.get('Name', '')
+                _m_year = mrow.get('Year', mrow.get('parsed_year', None))
+                _full_watched = st.session_state.get('watched_enriched', pd.DataFrame())
+                if not _full_watched.empty and 'poster_path' in _full_watched.columns:
+                    _match = _full_watched[_full_watched['Name'] == _m_name]
+                    if _m_year and pd.notna(_m_year) and 'Year' in _full_watched.columns:
+                        _match_yr = _match[_match['Year'] == _m_year]
+                        if not _match_yr.empty:
+                            _match = _match_yr
+                    if not _match.empty:
+                        _poster = _match.iloc[0].get('poster_path', '')
+                        if _poster:
+                            try:
+                                mrow['poster_path'] = _poster
+                            except Exception:
+                                pass  # Series may be read-only in some edge cases
             st.markdown(
                 f'<div style="font-family:Chivo,sans-serif;font-size:1.5rem;font-weight:900;'
                 f'color:#000;background:#00E5FF;border:5px solid #000;padding:5px 14px;'
@@ -1186,27 +1426,32 @@ def _tab_milestones(dataframes: Dict[str, pd.DataFrame]) -> None:
 
         _divider()
         _section_header("MOST RE-WATCHED FILMS")
-        # ✅ V9 FIX: Use diary.csv (each viewing = one row) instead of
-        # watched.csv (deduplicated, one row per film — never has duplicates).
-        diary_df = dataframes.get("diary", pd.DataFrame())
-        if not diary_df.empty and "Name" in diary_df.columns:
-            most_watched = get_most_watched_films(diary_df, 10)
+        # ✅ V9.4 FIX: Use the year-filtered diary (diary_df_ms, computed
+        # above) so that re-watched films reflect only the selected year.
+        # For ALL TIME, diary_df_ms is the full diary, preserving existing
+        # all-time behaviour.
+        # Also use the FULL enriched watched cache (not the year-filtered
+        # watched_df slice) for poster/metadata lookup so that poster images
+        # are found regardless of which year is currently selected.
+        if not diary_df_ms.empty and "Name" in diary_df_ms.columns:
+            most_watched = get_most_watched_films(diary_df_ms, 10)
             if not most_watched.empty:
-                # Merge poster/metadata from enriched watched_df
+                # Use FULL enriched watched data for poster lookup
+                _full_watched_rw = st.session_state.get("watched_enriched", watched_df)
                 meta_cols = ["Name", "Year", "poster_path", "tmdb_id",
                              "vote_average", "vote_count", "runtime"]
-                avail = [c for c in meta_cols if c in watched_df.columns]
-                if "poster_path" in watched_df.columns and "poster_path" not in most_watched.columns:
+                avail = [c for c in meta_cols if c in _full_watched_rw.columns]
+                if "poster_path" in _full_watched_rw.columns and "poster_path" not in most_watched.columns:
                     merge_on = []
-                    if "Name" in most_watched.columns and "Name" in watched_df.columns:
+                    if "Name" in most_watched.columns and "Name" in _full_watched_rw.columns:
                         merge_on.append("Name")
-                    if "Year" in most_watched.columns and "Year" in watched_df.columns:
+                    if "Year" in most_watched.columns and "Year" in _full_watched_rw.columns:
                         merge_on.append("Year")
                     if merge_on:
-                        meta = watched_df.drop_duplicates(subset=merge_on, keep="first")[avail]
+                        meta = _full_watched_rw.drop_duplicates(subset=merge_on, keep="first")[avail]
                         most_watched = most_watched.merge(meta, on=merge_on, how="left",
                                                          suffixes=("", "_meta"))
-                display_film_grid_large(most_watched, "", n=10)
+                display_film_grid_large(most_watched, "", n=10, show_rating=False)
                 display_rewatch_counts(most_watched)
             else:
                 st.info("No re-watched films detected — single-viewing purist mode activated.")
@@ -1224,7 +1469,7 @@ def _tab_milestones(dataframes: Dict[str, pd.DataFrame]) -> None:
 # ─────────────────────────────────────────────────────────────────
 # TAB: 📊 STATS
 # ─────────────────────────────────────────────────────────────────
-def _tab_stats(dataframes: Dict[str, pd.DataFrame]) -> None:
+def _tab_stats(dataframes: Dict[str, pd.DataFrame], selected_year: str = "ALL TIME") -> None:
     try:
         watched_df = dataframes.get("watched", pd.DataFrame())
         if watched_df.empty:
@@ -1235,6 +1480,7 @@ def _tab_stats(dataframes: Dict[str, pd.DataFrame]) -> None:
             unsafe_allow_html=True,
         )
         watched_df = st.session_state.get("watched_enriched", watched_df)
+        watched_df = _apply_year_filter(watched_df, selected_year, "Date", diary_df=dataframes.get("diary", pd.DataFrame()))
         watched_df = _safe_num(watched_df, ["runtime","vote_average","vote_count"])
 
         def _sg(subset: pd.DataFrame, lbl: str) -> None:
@@ -1303,7 +1549,7 @@ def _tab_stats(dataframes: Dict[str, pd.DataFrame]) -> None:
 # ─────────────────────────────────────────────────────────────────
 # TAB: 🗺️ MAP
 # ─────────────────────────────────────────────────────────────────
-def _tab_map(dataframes: Dict[str, pd.DataFrame]) -> None:
+def _tab_map(dataframes: Dict[str, pd.DataFrame], selected_year: str = "ALL TIME") -> None:
     try:
         watched_df = dataframes.get("watched", pd.DataFrame())
         if watched_df.empty:
@@ -1314,6 +1560,7 @@ def _tab_map(dataframes: Dict[str, pd.DataFrame]) -> None:
             unsafe_allow_html=True,
         )
         watched_df = st.session_state.get("watched_enriched", watched_df)
+        watched_df = _apply_year_filter(watched_df, selected_year, "Date", diary_df=dataframes.get("diary", pd.DataFrame()))
 
         if "production_countries" not in watched_df.columns:
             st.info("⚙️ Visit 🎬 WATCHED tab first to process your films, then the map unlocks!")

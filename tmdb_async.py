@@ -16,8 +16,8 @@ TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 TMDB_PROFILE_BASE = "https://image.tmdb.org/t/p/w185"
 
 # Rate limiting
-MAX_CONCURRENT_REQUESTS = 40   # TMDB allows ~40 req/s
-REQUEST_TIMEOUT = 15           # Per-request read timeout (seconds)
+MAX_CONCURRENT_REQUESTS = 40   # TMDB allows ~40 req/s, increased from 30
+REQUEST_TIMEOUT = 10           # Per-request read timeout (seconds), reduced from 15
 CONNECT_TIMEOUT = 5            # TCP connect timeout (seconds)
 MAX_RETRIES = 0                # No in-coroutine retry — failures are cached and retried next session
 
@@ -254,15 +254,16 @@ def run_async_fetch(api_key: str, movie_list: List[Tuple[str, Optional[int]]]) -
         async with TMDBAsyncClient(api_key) as client:
             return await client.fetch_multiple_movies(movie_list)
     
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         results = loop.run_until_complete(_fetch())
-        loop.close()
         return results
     except Exception as e:
         print(f"Error in async fetch: {e}")
         return [None] * len(movie_list)
+    finally:
+        loop.close()
 
 
 def fetch_movies_with_progress(
@@ -280,7 +281,7 @@ def fetch_movies_with_progress(
     full DNS + TLS handshake overhead.
     """
     import time as _t
-    BATCH_SIZE = 50
+    BATCH_SIZE = 75
     all_results = []
     total_movies = len(movie_list)
 
@@ -309,19 +310,24 @@ def fetch_movies_with_progress(
 
                 all_results.extend(batch_results)
 
+                # Prevent TMDB burst rate limiting
+                if i + BATCH_SIZE < total_movies:
+                    await asyncio.sleep(0.15)
+
                 if progress_bar:
                     progress = min((i + len(batch)) / total_movies, 1.0)
                     progress_bar.progress(progress)
 
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         loop.run_until_complete(_fetch_all_batches())
-        loop.close()
     except Exception as e:
         print(f"Error in async fetch: {e}")
         # Pad remaining results with None if partial failure
         while len(all_results) < total_movies:
             all_results.append(None)
+    finally:
+        loop.close()
 
     return all_results

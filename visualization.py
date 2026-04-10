@@ -94,20 +94,87 @@ LOADERS: List[str] = [
     "📽️ Cross-referencing against the Letterboxd hivemind...",
     "🎭 Syncing with the ghost of Roger Ebert...",
     "🎞️ Checking if you've actually seen Jeanne Dielman...",
+    "🎬 Scorsese just called. He has opinions about your list...",
+    "📽️ Converting your watchlist into existential dread...",
+    "🍿 Your cinema log is longer than most screenplays...",
+    "🎭 Tarantino is foot-tapping impatiently...",
+    "🎞️ Asking Denis Villeneuve to narrate this loading screen...",
+    "🎥 Running your taste through the Criterion filter...",
+    "📺 Negotiating with the algorithm overlords...",
+    "🎬 Paul Schrader just posted about your taste...",
+    "🍿 Warming up the projector at 24fps...",
+    "📽️ Letterboxd rate-limited us. Again. Worth it...",
+    "🎭 Coppola mortgaged a vineyard for this data...",
+    "🎞️ Your watchlist has more sequels than the MCU...",
 ]
 
-# Tab easter eggs
-TAB_EGGS: Dict[str, str] = {
-    "watched":    "★ 'The only way to watch more films is to watch more films.' — You, probably",
-    "watchlist":  "📋 Your watchlist is just organized procrastination.",
-    "ratings":    "⭐ Remember: giving 5 stars too freely is a war crime.",
-    "recent":     "🕐 That last film? Your therapist would have notes.",
-    "artists":    "🎭 Auteur theory is just astrology for film bros.",
-    "milestones": "🏆 Achievement unlocked: Severe touch-grass deficiency.",
-    "stats":      "📊 These numbers mean nothing. And yet, you feel seen.",
-    "map":        "🗺️ Cinema is the universal language. (Subtitles help.)",
-    "roulette":   "🎰 Fate has better taste than your algorithm.",
+# Tab easter eggs — rotating pool per tab
+_TAB_EGGS_POOL: Dict[str, List[str]] = {
+    "watched": [
+        "★ 'The only way to watch more films is to watch more films.' — You, probably",
+        "★ Your screen time could power a small country.",
+        "★ Netflix wishes it had your commitment.",
+        "★ At this rate, you'll run out of films by 2035.",
+        "★ Hollywood called — they want their audience back.",
+    ],
+    "watchlist": [
+        "📋 Your watchlist is just organized procrastination.",
+        "📋 Adding films faster than you'll ever watch them. Art.",
+        "📋 This watchlist has more entries than some filmographies.",
+        "📋 'I'll watch it this weekend' — You, 47 weekends ago.",
+        "📋 Your watchlist is a love letter to films you'll never see.",
+    ],
+    "ratings": [
+        "⭐ Remember: giving 5 stars too freely is a war crime.",
+        "⭐ Your 3-star ratings are just films you watched while on your phone.",
+        "⭐ Half-stars exist for a reason. Use them. Assert dominance.",
+        "⭐ You rate like someone who thinks they're a real critic. Respect.",
+        "⭐ Every 1-star review you give makes a film student cry.",
+    ],
+    "recent": [
+        "🕐 That last film? Your therapist would have notes.",
+        "🕐 Recent watches say more about you than any personality test.",
+        "🕐 Your recent history reads like a cry for help. Beautiful.",
+        "🕐 3am film choices are the truest test of character.",
+        "🕐 Your algorithm is judging you. So are we.",
+    ],
+    "artists": [
+        "🎭 Auteur theory is just astrology for film bros.",
+        "🎭 Your top director says everything about your personality.",
+        "🎭 You have a type. In directors. That's... something.",
+        "🎭 If actors had frequent flyer points, your faves would be platinum.",
+        "🎭 Your taste in directors is impeccable. We're lying, but it felt nice.",
+    ],
+    "milestones": [
+        "🏆 Achievement unlocked: Severe touch-grass deficiency.",
+        "🏆 These milestones are your real life achievements now.",
+        "🏆 Film #1000 hits different when you realize it took 2 years.",
+        "🏆 Each milestone brings you closer to terminal cinephilia.",
+        "🏆 Your film count is a flex and a warning sign.",
+    ],
+    "stats": [
+        "📊 These numbers mean nothing. And yet, you feel seen.",
+        "📊 Data doesn't lie. Your taste, however...",
+        "📊 Spreadsheet energy, but make it cinema.",
+        "📊 You're not obsessed. You're ✨data-driven✨.",
+        "📊 These stats will not help you in a job interview.",
+    ],
+    "map": [
+        "🗺️ Cinema is the universal language. (Subtitles help.)",
+        "🗺️ You've traveled the world. From your couch.",
+        "🗺️ Your passport is boring but your map tab isn't.",
+        "🗺️ More countries than most diplomats. Less jet lag.",
+        "🗺️ Every country you haven't watched from is a missed opportunity.",
+    ],
+    "roulette": [
+        "🎰 Fate has better taste than your algorithm.",
+        "🎰 Trust the wheel. It hasn't steered you wrong yet.",
+        "🎰 Spin it. You know you can't decide on your own.",
+        "🎰 The wheel of cinema never stops. Neither do you.",
+        "🎰 Decision fatigue? Let chaos choose your next film.",
+    ],
 }
+TAB_EGGS: Dict[str, str] = {k: v[0] for k, v in _TAB_EGGS_POOL.items()}
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -172,12 +239,12 @@ def _flag(code: str) -> str:
 def display_brutalist_title() -> None:
     """Neo-Brutalist Comic title card."""
     st.markdown(
-        '<div class="nb-badge">V9 NEO-BRUTALIST COMIC EDITION</div>'
+        '<div class="nb-badge">V9.1: NEO-BRUTALIST COMIC EDITION</div>'
         '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-bottom:6px;">'
         '<span class="nb-title-cyan">LETTERBOXD</span>'
         '<span class="nb-title-yellow">ANALYZER</span>'
         '</div>'
-        '<div class="nb-subtitle">VALIDATING YOUR KINO TASTE SINCE 2024</div>'
+        '<div class="nb-subtitle">VALIDATING YOUR KINO TASTE SINCE 2026</div>'
         '<br>',
         unsafe_allow_html=True,
     )
@@ -261,6 +328,9 @@ def _apply_brutal_plotly_theme(fig: go.Figure, title: str = "") -> go.Figure:
         margin = {"t": 50, "b": 60, "l": 80, "r": 20},
         showlegend = False,
     )
+
+    fig.update_xaxes(rangeslider_visible=False, fixedrange=True)
+    fig.update_yaxes(fixedrange=True)
 
     # Apply cycling bar colors and add black border to each bar
     if hasattr(fig, "data") and fig.data:
@@ -351,10 +421,10 @@ def display_film_grid(
     )
 
 
-def display_film_grid_large(df: pd.DataFrame, title: str = "", n: int = 8, square: bool = False) -> None:
+def display_film_grid_large(df: pd.DataFrame, title: str = "", n: int = 8, square: bool = False, show_rating: bool = True) -> None:
     """Render a film grid showing up to n films."""
     cols = 5 if n >= 10 else 4
-    display_film_grid(df.head(n), title, show_rating=True, cols_count=cols, square=square)
+    display_film_grid(df.head(n), title, show_rating=show_rating, cols_count=cols, square=square)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -626,12 +696,16 @@ def create_world_map(country_data: Dict[str, int]) -> None:
         margin        = {"t": 10, "b": 10, "l": 0, "r": 0},
     )
 
+    fig.update_xaxes(rangeslider_visible=False, fixedrange=True)
+    fig.update_yaxes(fixedrange=True)
+
     st.plotly_chart(fig, theme=None, width="stretch")
 
 
 # ─────────────────────────────────────────────────────────────────
 # WATCHLIST ROULETTE
 # ─────────────────────────────────────────────────────────────────
+@st.fragment
 def display_watchlist_roulette(df: pd.DataFrame) -> None:
     """
     Neo-Brutalist watchlist roulette.
@@ -645,8 +719,9 @@ def display_watchlist_roulette(df: pd.DataFrame) -> None:
     """
     _section_header("WATCHLIST ROULETTE")
     st.markdown(
-        '<div class="nb-rou-wrap">'
-        '<div class="nb-rou-title">WATCHLIST<br>ROULETTE</div>',
+        '<div class="nb-rou-title" style="background:var(--purple);background-image:var(--dots-wht);'
+        'border:8px solid #000;box-shadow:16px 16px 0 #000;padding:55px 35px;text-align:center;'
+        'margin-top:25px;position:relative;">WATCHLIST<br>ROULETTE</div>',
         unsafe_allow_html=True,
     )
 
@@ -687,7 +762,6 @@ def display_watchlist_roulette(df: pd.DataFrame) -> None:
             ]
         if pool_df.empty:
             st.warning("🎬 No films match that genre filter. Try a different one!")
-            st.markdown('</div>', unsafe_allow_html=True)
             return
         st.session_state[pool_key] = pool_df.to_dict("records")
 
@@ -748,15 +822,16 @@ def display_watchlist_roulette(df: pd.DataFrame) -> None:
             unsafe_allow_html=True,
         )
 
-    st.markdown('</div>', unsafe_allow_html=True)
+
 
 
 # ─────────────────────────────────────────────────────────────────
 # TAB EASTER EGGS
 # ─────────────────────────────────────────────────────────────────
 def display_tab_easter_egg(tab: str) -> None:
-    """Render a straight (never rotated) easter egg badge."""
-    msg = TAB_EGGS.get(tab, "🎬 Cinema is life.")
+    """Render a straight (never rotated) easter egg badge — random from pool."""
+    pool = _TAB_EGGS_POOL.get(tab, ["🎬 Cinema is life."])
+    msg = random.choice(pool)
     st.markdown(
         f'<div style="margin-top:20px;text-align:right;">'
         f'<span class="nb-egg">{msg}</span>'
@@ -771,17 +846,63 @@ def display_tab_easter_egg(tab: str) -> None:
 def display_map_footer() -> None:
     """Mandatory 'VIBECODED WITH CLAUDE' footer for the Map tab."""
     st.markdown(
-        '<div class="nb-mapfooter">VIBECODED WITH CLAUDE</div>',
+        '<div class="nb-mapfooter">VIBECODED WITH CLAUDE SONNET 4.5, 4.6 &amp; OPUS 4.6, NOT BY.</div>',
         unsafe_allow_html=True,
     )
 
 
 def display_global_footer() -> None:
-    """Global footer shown on all tabs: left = MADE WITH LOVE AND POTATO PC, right = COPYLEFT.2026."""
+    """Global footer shown on all tabs — V9.1 branding."""
+    import base64 as _b64
+
+    # Load QR code image
+    _qr_path = Path(__file__).parent / "static" / "qr_antonymic.jpg"
+    _qr_b64 = ""
+    if _qr_path.exists():
+        _qr_b64 = _b64.b64encode(_qr_path.read_bytes()).decode()
+
+    _qr_html = (
+        f'<img src="data:image/jpeg;base64,{_qr_b64}" alt="QR @antonymic" '
+        f'style="width:100px;height:100px;border:3px solid #000;box-shadow:4px 4px 0 #000;'
+        f'margin-top:10px;display:block;">'
+    ) if _qr_b64 else ""
+
     st.markdown(
         '<div class="nb-globalfooter">'
+        # ── Left column ──
+        '<div>'
         '<span class="nb-gf-left">MADE WITH LOVE AND POTATO PC</span>'
+        '<div style="font-family:Space Grotesk,sans-serif;font-size:.68rem;'
+        'color:#00E5FF;margin-top:4px;text-transform:uppercase;letter-spacing:.04em;'
+        'line-height:1.5;">'
+        'MADE WITH AN AMD A4-4300M DUAL CORE THINKPAD. BORN 2013.<br>'
+        'HELD TOGETHER BY DUCT TAPE AND DREAMS'
+        '</div>'
+        '</div>'
+        # ── Right column ──
+        '<div style="text-align:right;">'
         '<span class="nb-gf-right">COPYLEFT.2026</span>'
+        '<div style="margin-top:4px;">'
+        '<a href="https://letterboxd.com/antonymic/" target="_blank" '
+        'style="font-family:Space Grotesk,sans-serif;font-size:.72rem;'
+        'color:#00E5FF;font-weight:900;text-decoration:none;text-transform:uppercase;">'
+        'WRITTEN, PRODUCED &amp; DIRECTED BY @antonymic ON LETTERBOXD</a>'
+        '</div>'
+        '</div>'
+        '</div>'
+        # ── QR + Email row ──
+        '<div style="background:#000;border:5px solid #000;border-top:none;'
+        'padding:15px 25px;display:flex;align-items:center;justify-content:space-between;'
+        'flex-wrap:wrap;gap:12px;">'
+        f'{_qr_html}'
+        '<div style="font-family:Space Grotesk,sans-serif;font-size:.72rem;'
+        'color:#FFDE00;font-weight:900;text-transform:uppercase;letter-spacing:.04em;'
+        'text-align:right;flex:1;min-width:220px;">'
+        'DIRECT ALL APPLAUSE, BUGS, AND DEMANDS FOR NEW FEATURES TO:<br>'
+        '<a href="mailto:letterboxdanalyzerneo@gmail.com" '
+        'style="color:#00E5FF;text-decoration:none;font-size:.85rem;">'
+        'letterboxdanalyzerneo@gmail.com</a>'
+        '</div>'
         '</div>',
         unsafe_allow_html=True,
     )
