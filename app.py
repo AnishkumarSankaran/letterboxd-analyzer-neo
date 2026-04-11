@@ -1,27 +1,22 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║  LETTERBOXD PROFILE ANALYZER — V9 NEO-BRUTALIST COMIC EDITION       ║
+║  LETTERBOXD PROFILE ANALYZER — V9.5 NEO-BRUTALIST COMIC EDITION     ║
 ║                                                                      ║
-║  V9 FIXES vs V8:                                                     ║
-║  ✅ UI: Neo-Brutalist Comic — CMYK palette, hard shadows, Chivo      ║
-║  ✅ ZERO transform:rotate, ZERO border-radius, ZERO slanting         ║
-║  ✅ Artist cards: RECTANGULAR (aspect-ratio 3/4), never circles      ║
-║  ✅ AVG RATING: reads from ratings.csv, not watched.csv              ║
-║  ✅ GRID COUNTS: 4 newest, 4 oldest, 4 crowd favs, 4 hidden gems    ║
-║  ✅ REWATCH FIX: group by (Name,Year) — Superman 1978 ≠ 2025        ║
-║  ✅ PLOTLY FULLSCREEN: plot_bgcolor=white, theme=None, no white-on-  ║
-║       white invisible text bug in full screen mode                  ║
-║  ✅ ROULETTE PERF: pre-built pool in session_state, sample() only   ║
-║  ✅ FUNNY LOADERS: custom messages instead of default spinners       ║
-║  ✅ VECTORISED DATA: explode() replaces iterrows() loops             ║
-║  ✅ @st.cache_data on all heavy analysis functions                   ║
-║  ✅ Map tab footer: "VIBECODED WITH CLAUDE"                          ║
-║  ✅ Straight badges: transform:none, never rotated                   ║
-║                                                                      ║
-║  V9.3 FIXES (Opus):                                                  ║
-║  ✅ Year dropdown reads diary.csv "Watched Date" (actual watch date) ║
-║  ✅ _apply_year_filter uses diary cross-reference strategy           ║
-║  ✅ All tabs pass diary_df to _apply_year_filter                     ║
+║  V9.5 FIXES vs V9.4:                                                 ║
+║  ✅ @st.fragment: Year filter no longer causes full-app reruns       ║
+║  ✅ POLARS: data_processing.py uses polars for 10-50× speedup       ║
+║  ✅ GENRE CHART: tickangle=0 — X-axis labels never slant            ║
+║  ✅ MILESTONES: Fixed wrong dates (was showing logging date)         ║
+║  ✅ MILESTONES: Series→dict conversion for poster injection          ║
+║  ✅ MILESTONES: "No milestones yet" message for small libraries      ║
+║  ✅ FIRST & LAST: Fixed double-filter bug when diary unavailable     ║
+║  ✅ RETRY BUTTON: Replaced with 7-day TTL auto-retry info           ║
+║  ✅ DEAD CODE: Deleted utils.py (348 lines, zero imports)            ║
+║  ✅ HASH FIX: database.py migration uses MD5, not hash()            ║
+║  ✅ QR CACHE: base64 QR cached in session_state (was 9× per page)   ║
+║  ✅ IMPORTS: hashlib at module level, removed dead CMYK import       ║
+║  ✅ IMPORTS: Removed sys.path hack, fixed datetime aliases           ║
+║  ✅ PILLOW: Removed from requirements (not needed)                   ║
 ║                                                                      ║
 ║  V9.4 FIXES:                                                         ║
 ║  ✅ Artists: Highest Rated sections now year-filtered                ║
@@ -37,24 +32,20 @@
 
 from __future__ import annotations
 
+import hashlib
 import html as _html
 import json
 import os
 import random as _rnd
-import sys
 import traceback
 import zipfile
-from datetime import datetime as _dt_now, timedelta as _td
+from datetime import datetime
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
-
-_app_dir = os.path.dirname(os.path.abspath(__file__))
-if _app_dir not in sys.path:
-    sys.path.insert(0, _app_dir)
 
 from database import get_database, _make_cache_key
 from tmdb_async import fetch_movies_with_progress
@@ -81,7 +72,6 @@ from data_processing import (
 )
 from visualization import (
     COUNTRY_NAME_MAP,
-    CMYK,
     _divider,
     _section_header,
     create_world_map,
@@ -127,7 +117,7 @@ def _capture(ex: Exception) -> None:
 # PAGE CONFIG
 # ─────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Letterboxd Analyzer — V9.2 NEO-BRUTAL",
+    page_title="Letterboxd Analyzer — V9.5 NEO-BRUTAL",
     page_icon="🎬",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -394,7 +384,7 @@ def enrich_with_progress(df: pd.DataFrame, label: str = "films",
                 # Check TTL — only retry failures older than threshold
                 cached_at = movie.get("cached_at", "")
                 try:
-                    age_days = (_dt_now.now() - _dt_now.fromisoformat(str(cached_at))).days
+                    age_days = (datetime.now() - datetime.fromisoformat(str(cached_at))).days
                 except Exception:
                     age_days = 999  # Unknown age → retry
                 if age_days < FAILURE_TTL_DAYS:
@@ -473,8 +463,7 @@ def enrich_with_progress(df: pd.DataFrame, label: str = "films",
                         ck = _make_cache_key(title, year)
                         # ✅ V9.2 FIX: Use deterministic MD5 instead of hash()
                         # which changes every process restart (PYTHONHASHSEED).
-                        import hashlib as _hashlib
-                        _digest = int(_hashlib.md5(ck.encode(), usedforsecurity=False).hexdigest(), 16)
+                        _digest = int(hashlib.md5(ck.encode(), usedforsecurity=False).hexdigest(), 16)
                         raw = _digest % 2_000_000_000
                         neg_id = -(raw if raw != 0 else 1)
                         write_records.append({"_orig_idx": orig_idx, "tmdb_id": neg_id})
@@ -693,23 +682,17 @@ def main() -> None:
                 if wlf: dataframes["watchlist"] = pd.read_csv(wlf)
 
                 if dataframes: st.success(f"✅ {len(dataframes)} file(s) loaded")
-                
-                # Add ability to manually clear fails
-                if st.button("Retry Failed TMDB Lookups"):
-                    try:
-                        # Query all failed cache keys, then delete them
-                        cur = db.conn.cursor()
-                        cur.execute(
-                            "SELECT cache_key FROM movies WHERE tmdb_id < 0 OR tmdb_id IS NULL"
-                        )
-                        failed_cks = [r[0] for r in cur.fetchall()]
-                        if failed_cks:
-                            db.delete_failed_entries(failed_cks)
-                        st.session_state.clear()
-                        st.success(f"Cleared {len(failed_cks)} failures! Refreshing...")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Failed to clear: {e}")
+
+                # ✅ V9.5: Replaced dangerous "Retry" button with info message.
+                # Failed lookups are automatically retried after 7 days (TTL).
+                st.markdown(
+                    '<div style="font-family:Space Grotesk,sans-serif;font-weight:700;'
+                    'font-size:0.72rem;color:#000;background:#F0F0F0;border:3px solid #000;'
+                    'padding:8px 12px;box-shadow:3px 3px 0 #000;margin-top:8px;">'
+                    '🔄 Failed TMDB lookups are automatically retried after 7 days.'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
 
         if not dataframes:
             _show_welcome()
@@ -805,7 +788,13 @@ def display_analysis(dataframes: Dict[str, pd.DataFrame]) -> None:
     # PRIMARY: diary.csv "Watched Date" — actual watch dates
     _diary_raw = dataframes.get("diary", pd.DataFrame())
     if not _diary_raw.empty and "Watched Date" in _diary_raw.columns:
-        _dd = pd.to_datetime(_diary_raw["Watched Date"], errors="coerce")
+        # ✅ V9.5 FIX: Cache the parsed diary dates so we don't call
+        # pd.to_datetime 7× (once per tab via _apply_year_filter).
+        if "_diary_dates_cache" not in st.session_state:
+            st.session_state["_diary_dates_cache"] = pd.to_datetime(
+                _diary_raw["Watched Date"], errors="coerce"
+            )
+        _dd = st.session_state["_diary_dates_cache"]
         _years_available.update(int(y) for y in _dd.dropna().dt.year.unique())
 
     # SECONDARY: watched.csv "Date" — catches films not in diary
@@ -821,79 +810,85 @@ def display_analysis(dataframes: Dict[str, pd.DataFrame]) -> None:
         _years_available.update(int(y) for y in _rd.dropna().dt.year.unique())
 
     if not _years_available:
-        import datetime
-        _years_available = {datetime.datetime.now().year}
+        _years_available = {datetime.now().year}
 
     _year_options = ["ALL TIME"] + [str(y) for y in sorted(_years_available, reverse=True)]
 
-    _fc1, _fc2 = st.columns([3, 1])
-    with _fc2:
-        st.markdown(
-            '<div style="font-family:Chivo,sans-serif;font-size:0.9rem;'
-            'font-weight:900;color:#000;background:#FFDE00;border:5px solid #000;'
-            'padding:4px 10px;box-shadow:5px 5px 0 #000;text-transform:uppercase;'
-            'margin-bottom:4px;">📅 FILTER BY YEAR</div>',
-            unsafe_allow_html=True,
-        )
-        selected_year = st.selectbox(
-            "Filter by year:",
-            _year_options,
-            key="year_filter_global",
-            label_visibility="collapsed",
-        )
+    # ✅ V9.5 FIX: Wrap the year filter + all tab renderers in @st.fragment.
+    # This means changing the year dropdown ONLY re-runs _render_tabs(),
+    # NOT the entire app (no re-reading CSVs, cache stats, sidebar, etc.).
+    @st.fragment
+    def _render_tabs():
+        _fc1, _fc2 = st.columns([3, 1])
+        with _fc2:
+            st.markdown(
+                '<div style="font-family:Chivo,sans-serif;font-size:0.9rem;'
+                'font-weight:900;color:#000;background:#FFDE00;border:5px solid #000;'
+                'padding:4px 10px;box-shadow:5px 5px 0 #000;text-transform:uppercase;'
+                'margin-bottom:4px;">📅 FILTER BY YEAR</div>',
+                unsafe_allow_html=True,
+            )
+            selected_year = st.selectbox(
+                "Filter by year:",
+                _year_options,
+                key="year_filter_global",
+                label_visibility="collapsed",
+            )
 
-    # ✅ V9.1 FIX: Do NOT pre-filter dataframes here.
-    # Each tab retrieves from st.session_state which stores the FULL
-    # enriched data. The year filter is applied INSIDE each tab function
-    # via _apply_year_filter() AFTER session_state retrieval.
+        # ✅ V9.1 FIX: Do NOT pre-filter dataframes here.
+        # Each tab retrieves from st.session_state which stores the FULL
+        # enriched data. The year filter is applied INSIDE each tab function
+        # via _apply_year_filter() AFTER session_state retrieval.
 
-    tabs = st.tabs([
-        "🎬 WATCHED",
-        "📋 WATCHLIST",
-        "⭐ RATINGS",
-        "🕐 RECENT",
-        "🎭 ARTISTS",
-        "🏆 MILESTONES",
-        "📊 STATS",
-        "🗺️ MAP",
-        "🎰 ROULETTE",
-    ])
-    with tabs[0]:
-        t_w = time.time()
-        _tab_watched(dataframes, selected_year)
-        print(f"[TIME] _tab_watched: {time.time()-t_w:.2f}s")
-    with tabs[1]:
-        t_w = time.time()
-        _tab_watchlist(dataframes)
-        print(f"[TIME] _tab_watchlist: {time.time()-t_w:.2f}s")
-    with tabs[2]:
-        t_w = time.time()
-        _tab_ratings(dataframes, selected_year)
-        print(f"[TIME] _tab_ratings: {time.time()-t_w:.2f}s")
-    with tabs[3]:
-        t_w = time.time()
-        _tab_recent(dataframes, selected_year)
-        print(f"[TIME] _tab_recent: {time.time()-t_w:.2f}s")
-    with tabs[4]:
-        t_w = time.time()
-        _tab_artists(dataframes, selected_year)
-        print(f"[TIME] _tab_artists: {time.time()-t_w:.2f}s")
-    with tabs[5]:
-        t_w = time.time()
-        _tab_milestones(dataframes, selected_year)
-        print(f"[TIME] _tab_milestones: {time.time()-t_w:.2f}s")
-    with tabs[6]:
-        t_w = time.time()
-        _tab_stats(dataframes, selected_year)
-        print(f"[TIME] _tab_stats: {time.time()-t_w:.2f}s")
-    with tabs[7]:
-        t_w = time.time()
-        _tab_map(dataframes, selected_year)
-        print(f"[TIME] _tab_map: {time.time()-t_w:.2f}s")
-    with tabs[8]:
-        t_w = time.time()
-        _tab_roulette(dataframes)
-        print(f"[TIME] _tab_roulette: {time.time()-t_w:.2f}s")
+        tabs = st.tabs([
+            "🎬 WATCHED",
+            "📋 WATCHLIST",
+            "⭐ RATINGS",
+            "🕐 RECENT",
+            "🎭 ARTISTS",
+            "🏆 MILESTONES",
+            "📊 STATS",
+            "🗺️ MAP",
+            "🎰 ROULETTE",
+        ])
+        with tabs[0]:
+            t_w = time.time()
+            _tab_watched(dataframes, selected_year)
+            print(f"[TIME] _tab_watched: {time.time()-t_w:.2f}s")
+        with tabs[1]:
+            t_w = time.time()
+            _tab_watchlist(dataframes)
+            print(f"[TIME] _tab_watchlist: {time.time()-t_w:.2f}s")
+        with tabs[2]:
+            t_w = time.time()
+            _tab_ratings(dataframes, selected_year)
+            print(f"[TIME] _tab_ratings: {time.time()-t_w:.2f}s")
+        with tabs[3]:
+            t_w = time.time()
+            _tab_recent(dataframes, selected_year)
+            print(f"[TIME] _tab_recent: {time.time()-t_w:.2f}s")
+        with tabs[4]:
+            t_w = time.time()
+            _tab_artists(dataframes, selected_year)
+            print(f"[TIME] _tab_artists: {time.time()-t_w:.2f}s")
+        with tabs[5]:
+            t_w = time.time()
+            _tab_milestones(dataframes, selected_year)
+            print(f"[TIME] _tab_milestones: {time.time()-t_w:.2f}s")
+        with tabs[6]:
+            t_w = time.time()
+            _tab_stats(dataframes, selected_year)
+            print(f"[TIME] _tab_stats: {time.time()-t_w:.2f}s")
+        with tabs[7]:
+            t_w = time.time()
+            _tab_map(dataframes, selected_year)
+            print(f"[TIME] _tab_map: {time.time()-t_w:.2f}s")
+        with tabs[8]:
+            t_w = time.time()
+            _tab_roulette(dataframes)
+            print(f"[TIME] _tab_roulette: {time.time()-t_w:.2f}s")
+
+    _render_tabs()
     print(f"[TIME] display_analysis total tabs render: {time.time()-t_tabs:.2f}s")
 
 
@@ -1328,7 +1323,6 @@ def _tab_milestones(dataframes: Dict[str, pd.DataFrame], selected_year: str = "A
             '<div class="nb-title-cyan" style="font-size:2.5rem;margin-bottom:20px;">🏆 MILESTONES</div>',
             unsafe_allow_html=True,
         )
-        from datetime import datetime
         watched_df = st.session_state.get("watched_enriched", watched_df)
         watched_df = _apply_year_filter(watched_df, selected_year, "Date", diary_df=dataframes.get("diary", pd.DataFrame()))
 
@@ -1346,7 +1340,12 @@ def _tab_milestones(dataframes: Dict[str, pd.DataFrame], selected_year: str = "A
         if not _diary_raw_fl.empty and "Watched Date" in _diary_raw_fl.columns:
             fl = get_first_and_last_film(_diary_raw_fl, "Watched Date", yr)
         else:
-            fl = get_first_and_last_film(watched_df, "Date", yr)
+            # ✅ V9.5 FIX: watched_df is already year-filtered by
+            # _apply_year_filter above.  Don't pass yr again — the "Date"
+            # column is the Letterboxd *logging* date (all 2025 for bulk
+            # imports), NOT the watch date.  Double-filtering would find
+            # nothing for historical years.
+            fl = get_first_and_last_film(watched_df, "Date", year=None)
 
         if fl.get("first") is not None:
             col1, col2 = st.columns(2)
@@ -1393,11 +1392,20 @@ def _tab_milestones(dataframes: Dict[str, pd.DataFrame], selected_year: str = "A
             # Fallback to watched.csv if diary is unavailable
             milestones = get_milestones(watched_df, "Date")
 
+        if not milestones:
+            st.info("📊 Not enough diary entries for milestones yet. "
+                    "Keep watching — your 50th film unlocks the first one!")
+
         for mname, mrow in milestones.items():
+            # ✅ V9.5 FIX: Convert read-only Series to mutable dict so we
+            # can inject poster_path and Watched Date for display.
+            if hasattr(mrow, 'to_dict'):
+                mrow = mrow.to_dict()
+
             # ✅ V9.1 FIX: Inject poster_path from enriched watched data into
             # milestone rows. diary.csv has no TMDB columns, so milestones
             # from diary lack poster_path. We look it up by (Name, Year).
-            if hasattr(mrow, 'get') and not mrow.get('poster_path'):
+            if not mrow.get('poster_path'):
                 _m_name = mrow.get('Name', '')
                 _m_year = mrow.get('Year', mrow.get('parsed_year', None))
                 _full_watched = st.session_state.get('watched_enriched', pd.DataFrame())
@@ -1410,10 +1418,7 @@ def _tab_milestones(dataframes: Dict[str, pd.DataFrame], selected_year: str = "A
                     if not _match.empty:
                         _poster = _match.iloc[0].get('poster_path', '')
                         if _poster:
-                            try:
-                                mrow['poster_path'] = _poster
-                            except Exception:
-                                pass  # Series may be read-only in some edge cases
+                            mrow['poster_path'] = _poster
             st.markdown(
                 f'<div style="font-family:Chivo,sans-serif;font-size:1.5rem;font-weight:900;'
                 f'color:#000;background:#00E5FF;border:5px solid #000;padding:5px 14px;'

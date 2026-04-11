@@ -14,19 +14,19 @@ aiohttp>=3.9.0,<4.0.0
 # Error tracking (optional — gracefully disabled if SENTRY_DSN is absent)
 sentry-sdk>=1.40.0,<3.0.0
 
-# Image handling
-Pillow>=10.0.0,<12.0.0
-
 # Improved Streamlit hot-reload on Windows / Fedora
 watchdog>=3.0.0
 
 # Fast DataFrame I/O via Apache Arrow columnar format
 pyarrow>=14.0.0
 
-# ── Performance additions (V9.1) ──────────────────────────────────
+# ── Performance additions (V9.5) ──────────────────────────────────
 
 # 10x faster JSON parsing for actors/directors metadata columns
 orjson>=3.10.0
 
 # 10-50x faster groupby/sort/filter for heavy DataFrame operations
-polars>=1.0.0
+# Used in data_processing.py for analyze_genres, analyze_languages
+# analyze_countries, get_top_people, analyze_*_per_* functions
+# Using polars[rtcompact] for compatibility with older CPUs & Legacy CPUs like mine AMD A4 4300M DUAL CORE (no AVX2 required)
+polars[rtcompat]

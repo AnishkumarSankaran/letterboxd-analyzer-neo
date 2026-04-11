@@ -174,11 +174,15 @@ class MovieDatabase:
                 print(f"[DB] Fixed {fixed} corrupt year values")
 
         # ✅ Fix tmdb_id=-1 collisions: give each failure a unique negative ID
+        # ✅ V9.5 FIX: Use deterministic MD5 instead of hash() which changes
+        # every process restart (PYTHONHASHSEED).
+        import hashlib as _hashlib
         cur.execute("SELECT id, cache_key FROM movies WHERE tmdb_id = -1")
         failures = cur.fetchall()
         if len(failures) > 1:
             for i, (row_id, ck) in enumerate(failures):
-                raw = abs(hash(str(ck))) % 2_000_000_000
+                _digest = int(_hashlib.md5(str(ck).encode(), usedforsecurity=False).hexdigest(), 16)
+                raw = _digest % 2_000_000_000
                 neg_id = -(raw if raw != 0 else (i + 1))
                 cur.execute("UPDATE movies SET tmdb_id = ? WHERE id = ?", (neg_id, row_id))
             self.conn.commit()

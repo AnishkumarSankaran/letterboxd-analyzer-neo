@@ -1,7 +1,7 @@
 <div align="center">
 
-# 🎬 LETTERBOXD ANALYZER
-### V9 NEO-BRUTALIST COMIC EDITION
+# 🎬 LETTERBOXD ANALYZER NEO
+### V9.5 NEO-BRUTALIST COMIC EDITION
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.35+-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)](https://streamlit.io)
@@ -42,7 +42,7 @@ Export your data from Letterboxd, upload the ZIP, and in under 2 minutes you get
 ```
 letterboxd-neo-brutalist/
 ├── app.py                  # Main Streamlit app, enrichment pipeline, tab dispatcher
-├── data_processing.py      # Vectorised analytics (genres, decades, milestones, rewatches)
+├── data_processing.py      # Polars-accelerated analytics (genres, decades, milestones, rewatches)
 ├── database.py             # SQLite/Turso cache engine — bulk lookups, batch writes, WAL mode
 ├── tmdb_async.py           # Async TMDB client (aiohttp, 40 concurrent req/s, single session)
 ├── visualization.py        # Neo-Brutalist UI components, Plotly chart wrappers, world map
@@ -54,7 +54,7 @@ letterboxd-neo-brutalist/
 │   └── animations.css      # Keyframe animations (pop-in, blinking cursor)
 ├── requirements.txt
 └── .streamlit/
-    ├── secrets.toml        # API keys (not committed to git)
+    ├── secrets.toml        # API keys (not committed to git,I'm Sure!;Pretty Sure.)
     └── config.toml
 ```
 
@@ -148,8 +148,9 @@ Performance is achieved through:
 Film metadata fetched from TMDB is cached in `movie_cache.db` (SQLite, WAL mode).
 
 - Failed lookups are stored with a negative synthetic TMDB ID and retried after 7 days.
-- Cache keys are deterministic MD5 hashes of normalised title + year — consistent across restarts.
+- Cache keys are deterministic concatenation of normalised title + year (`title::year`) — consistent across restarts.
 - The `cache_key` column has a B-tree index for O(log n) lookups.
+- Negative TMDB IDs for failures use deterministic MD5 hashing (not Python's `hash()`).
 
 **Cloud deployment (Turso):** Set `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` in `.streamlit/secrets.toml` to switch to cloud-hosted SQLite. A pre-populated Turso database can serve thousands of users without re-fetching from TMDB on every cold start.
 
@@ -201,7 +202,21 @@ See [LICENSE](LICENSE) for full terms.
 
 ## 📝 Changelog
 
-### V9.4 (April 2026)
+### V9.5 (April 12 2026)
+- ✅ **Polars migration**: Genre, language, country, top-people, monthly/weekly/decade analysis now use polars for 10-50× speedup
+- ✅ **Genre chart X-axis**: Fixed slanting labels with `tickangle: 0`
+- ✅ **Milestone date display**: Fixed wrong dates (was showing logging date instead of actual watch date)
+- ✅ **Milestone poster injection**: Convert read-only Series to mutable dict — no more silent failures
+- ✅ **Milestone fallback**: Added "no milestones yet" message for small libraries
+- ✅ **First & Last film**: Fixed double-filtering bug when diary is unavailable
+- ✅ **Retry button removed**: Replaced with 7-day auto-retry TTL info message (multi-user safe)
+- ✅ **Dead code cleanup**: Deleted `utils.py` (348 lines, zero imports), removed dead `CMYK` import, `sys.path` hack
+- ✅ **hash() → MD5**: Fixed non-deterministic `hash()` in database migration to match main pipeline
+- ✅ **QR caching**: Base64-encoded QR code cached in session_state (was re-read 9× per page)
+- ✅ **Pillow removed**: Not needed (app uses remote TMDB image URLs)
+- ✅ **Import cleanup**: Moved loop-body imports to module level, fixed confusing aliases
+
+### V9.4 (April 11 2026)
 - ✅ Artists: Highest Rated sections are now year-filtered
 - ✅ Milestones: First & Last uses selected year, not current year
 - ✅ Milestones: Diary ordering uses `Watched Date`, not `Date`
@@ -209,7 +224,7 @@ See [LICENSE](LICENSE) for full terms.
 - ✅ Milestones: Most Re-watched uses year-filtered diary
 - ✅ Milestones: Poster lookup uses full enriched cache, not year slice
 
-### V9.3 (March 2026)
+### V9.3 (Somewhere in March 2026)
 - ✅ Year dropdown reads `diary.csv` "Watched Date" (actual watch date)
 - ✅ `_apply_year_filter` uses diary cross-reference strategy
 - ✅ All tabs pass `diary_df` to `_apply_year_filter`
@@ -231,3 +246,4 @@ See [LICENSE](LICENSE) for full terms.
 - ✅ Failure TTL: 7-day retry window for failed TMDB lookups
 
 *(See previous versions at [letterboxd-analyzer-pro](https://github.com/AnishkumarSankaran/letterboxd-analyzer-pro))*
+

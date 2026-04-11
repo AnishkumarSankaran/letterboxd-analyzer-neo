@@ -239,10 +239,10 @@ def _flag(code: str) -> str:
 def display_brutalist_title() -> None:
     """Neo-Brutalist Comic title card."""
     st.markdown(
-        '<div class="nb-badge">V9.1: NEO-BRUTALIST COMIC EDITION</div>'
+        '<div class="nb-badge">V9.5: NEO-BRUTALIST COMIC EDITION</div>'
         '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-bottom:6px;">'
         '<span class="nb-title-cyan">LETTERBOXD</span>'
-        '<span class="nb-title-yellow">ANALYZER</span>'
+        '<span class="nb-title-yellow">ANALYZER NEO</span>'
         '</div>'
         '<div class="nb-subtitle">VALIDATING YOUR KINO TASTE SINCE 2026</div>'
         '<br>',
@@ -315,6 +315,7 @@ def _apply_brutal_plotly_theme(fig: go.Figure, title: str = "") -> go.Figure:
             "zeroline":     True,
             "zerolinecolor":"#000000",
             "zerolinewidth": 2,
+            "tickangle":    0,  # ✅ V9.5 FIX: Force horizontal labels (no slanting)
         },
         yaxis = {
             "showgrid":     True,
@@ -600,7 +601,15 @@ def display_milestone_card(label: str, row: Any) -> None:
     name   = str(row.get("Name", "Unknown"))
     year   = row.get("Year", row.get("parsed_year", ""))
     year_s = f"{int(year)}" if pd.notna(year) and str(year).strip() else ""
-    date_s = str(row.get("parsed_date", row.get("Date", "")))[:10]
+    # ✅ V9.5 FIX: Check "Watched Date" (from diary.csv) first, then
+    # "parsed_date", then "Date".  Diary milestone rows contain
+    # "Watched Date" as the actual watch date; without this, the card
+    # would show the Letterboxd logging date or nothing at all.
+    date_s = str(
+        row.get("Watched Date",
+        row.get("parsed_date",
+        row.get("Date", "")))
+    )[:10]
     poster = row.get("poster_path", "")
     img_url = f"{TMDB_IMG}{poster}" if poster and str(poster).startswith("/") else ""
     img_part = (
@@ -852,14 +861,20 @@ def display_map_footer() -> None:
 
 
 def display_global_footer() -> None:
-    """Global footer shown on all tabs — V9.1 branding."""
+    """Global footer shown on all tabs — V9.5 branding."""
     import base64 as _b64
 
-    # Load QR code image
-    _qr_path = Path(__file__).parent / "static" / "qr_antonymic.jpg"
-    _qr_b64 = ""
-    if _qr_path.exists():
-        _qr_b64 = _b64.b64encode(_qr_path.read_bytes()).decode()
+    # ✅ V9.5 FIX: Cache the base64 QR so we don’t re-read the file
+    # on every tab render (was reading 9× per page load).
+    if "_qr_b64_cache" not in st.session_state:
+        _qr_path = Path(__file__).parent / "static" / "qr_antonymic.jpg"
+        if _qr_path.exists():
+            st.session_state["_qr_b64_cache"] = _b64.b64encode(
+                _qr_path.read_bytes()
+            ).decode()
+        else:
+            st.session_state["_qr_b64_cache"] = ""
+    _qr_b64 = st.session_state["_qr_b64_cache"]
 
     _qr_html = (
         f'<img src="data:image/jpeg;base64,{_qr_b64}" alt="QR @antonymic" '
